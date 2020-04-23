@@ -18,45 +18,44 @@ from tensorflow.keras.optimizers import Adam
 tf.enable_eager_execution()
 
 
-### Loading data
+### 1. Loading and cleaning data
 #path = '/Users/jeremylhour/Documents/Python/job2vec/data/Textes sur les fiches ROME.csv'
 path = '//ulysse/users/JL.HOUR/1A_These/A. Research/python-nlp/data/Textes sur les fiches ROME.csv'
 with open(path,encoding='utf=8') as f:
     df = pd.read_csv(f)
     
-df.shape
+print('Shape of dataset:', df.shape)
 
 ### Quick clean-up
-clean_val = {
+replace_values = {
         ',': '',
         'é': 'e',
         'è': 'e',
         'à': 'a',
         'â': 'a',
         '\(': '',
+        'ù': 'u',
         '\)': '',
         '\.\.\.': '',
         "''": "'",
              }
-df.replace({'TXT_NAME' : clean_val},inplace=True,regex=True)
+df.replace({'TXT_NAME' : replace_values}, inplace=True, regex=True)
 
 ### Merge all text into one string for a given job
-
 df['text'] = df[['ROME_PROFESSION_CARD_CODE','TXT_NAME']].groupby(['ROME_PROFESSION_CARD_CODE'])['TXT_NAME'].transform(lambda x: '.'.join(x))
 new_df = df[['ROME_PROFESSION_CARD_CODE','text']].drop_duplicates()
-
 raw_text = new_df['text'].str.cat()
 
-### Filter stop words​
-# liste des tokens
-tokenizer = RegexpTokenizer('[a-zA-Zéèàù0-9+]{2,}')
+### 2. Filter stop words​ and stemming
+# token list
+tokenizer = RegexpTokenizer('[a-zA-Z0-9+]{2,}')
 word_list = tokenizer.tokenize(raw_text.lower())
 
 # stemming
 stemmer = FrenchStemmer()
 word_list  = stemming(word_list)
 
-# definition et suppression des stop words
+# define and filter stop words
 stop_words = set(stopwords.words('french'))
 stop_words.update(['secteur','peut','entrepris','activ','emploi','cet','professionnel',
                    'utilis','horair','traval','semain','impliqu','exig','précédent','specialis',
@@ -64,14 +63,15 @@ stop_words.update(['secteur','peut','entrepris','activ','emploi','cet','professi
 word_list = stop_words_filtering(word_list)
 
 # fit vectorizer
-vectorizer = CountVectorizer(token_pattern='[a-zA-Zéèàù0-9+]{2,}')
+vectorizer = CountVectorizer(token_pattern='[a-zA-Z0-9+]{2,}')
 vectorizer.fit(word_list)
 
+# word dictionnary and reverse dictionnary
 word2idx = vectorizer.vocabulary_
 idx2word = dict(zip(word2idx.values(),word2idx.keys()))
 vocab_size = len(word2idx)
 
-### Mise en forme des donnees
+### 3. Taining the model
 WINDOW_SIZE = 5
 
 X, Y = ([], [])
@@ -88,30 +88,27 @@ y = np.array(Y).astype(int)
 print('Shape of X :', X.shape)
 print('Shape of Y :', y.shape)
 
-### Preparation du modele word2vec
 batch_size = 64
+job2vec = Job2vec(300)
 
-job2vec = Job2vec(100)
+# first run
 optimizer = Adam(learning_rate = 0.01)
 job2vec.compile(optimizer = optimizer,
                 loss = loss)
-
 training_history = job2vec.fit(X, y, epochs = 20, batch_size = 64)
 
+# second run
 optimizer = Adam(learning_rate = 0.001)
 job2vec.compile(optimizer = optimizer,
                 loss = loss)
 training_history = job2vec.fit(X,y, epochs = 20, batch_size = 64)
 
-
-### Post-process
-
+### 4. Post-processing
 vectors = job2vec.W1.numpy()
 transformer = Normalizer()
 vectors = transformer.fit_transform(vectors)
 vectors.shape
 
-### Reste à definir les vecteurs des codes ROME 
 def get_job_vec(job_description):
     word_list = tokenizer.tokenize(job_description)
     word_list = stemming(word_list)
@@ -124,9 +121,18 @@ def get_job_vec(job_description):
     
 job_vectors = new_df['text'].apply(func = get_job_vec)
 
-job1 = new_df['text'].iloc[0]
-job2 = new_df['text'].iloc[1]
 
-index_closest_words = find_closest(1, job_vectors, 10)
+job_index = 0
+job1 = new_df['text'].iloc[job_index]
+print(job1)
 
-cosine_similarity(get_job_vec(job1),get_job_vec(job2))
+index_closest_words = find_closest(job_index, job_vectors, 10)
+
+# Export vectors
+job_vectors_df = job_vectors.apply(pd.Series)
+for v in job_vectors_df:
+    title = 'job2vec_d' + str(v+1)
+    new_df[title] = job_vectors_df[v]
+
+export_df = new_df.drop(['text','job2vec', 'job2vec_d0'], axis=1)
+export_df.to_csv('job2vec_300.csv')
