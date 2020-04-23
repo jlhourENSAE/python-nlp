@@ -26,6 +26,20 @@ with open(path,encoding='utf=8') as f:
     
 df.shape
 
+### Quick clean-up
+clean_val = {
+        ',': '',
+        'é': 'e',
+        'è': 'e',
+        'à': 'a',
+        'â': 'a',
+        '\(': '',
+        '\)': '',
+        '\.\.\.': '',
+        "''": "'",
+             }
+df.replace({'TXT_NAME' : clean_val},inplace=True,regex=True)
+
 ### Merge all text into one string for a given job
 
 df['text'] = df[['ROME_PROFESSION_CARD_CODE','TXT_NAME']].groupby(['ROME_PROFESSION_CARD_CODE'])['TXT_NAME'].transform(lambda x: '.'.join(x))
@@ -45,8 +59,8 @@ word_list  = stemming(word_list)
 # definition et suppression des stop words
 stop_words = set(stopwords.words('french'))
 stop_words.update(['secteur','peut','entrepris','activ','emploi','cet','professionnel',
-                   'utilis','horair','traval','semain','impliqu','exig','précédent','spécialis',
-                   'peuvent','selon','méti','sein','dan','différent'])
+                   'utilis','horair','traval','semain','impliqu','exig','précédent','specialis',
+                   'peuvent','selon','meti','sein','dan','different','travail','acces'])
 word_list = stop_words_filtering(word_list)
 
 # fit vectorizer
@@ -75,26 +89,9 @@ print('Shape of X :', X.shape)
 print('Shape of Y :', y.shape)
 
 ### Preparation du modele word2vec
-class Job2vec(tf.keras.Model):
-    def __init__(self, n_dim):
-        super(Job2vec, self).__init__()
-        self.W1 = tf.Variable(tf.random.uniform([vocab_size, n_dim],-1.0, 1.0))
-        self.W2 = tf.Variable(tf.random.uniform([n_dim, vocab_size],-1.0, 1.0))
-        
-    def __call__(self, inputs, training=True):
-        inputs = tf.one_hot(inputs, depth = vocab_size, axis=-1)
-        inputs = tf.squeeze(inputs, axis=1)
-        h = tf.linalg.matmul(inputs, self.W1)
-        u = tf.linalg.matmul(h, self.W2)
-        return u
-    
 batch_size = 64
-def loss(y_true, y_pred):
-    y_true = tf.cast(y_true, dtype=tf.int32)
-    y_true = tf.one_hot(y_true, depth=vocab_size)
-    return -tf.tensordot(y_pred, tf.reduce_sum(y_true, axis=[1]),2)/batch_size + tf.reduce_sum(4*tf.math.log(tf.reduce_sum(tf.exp(y_pred), axis=[1])))/batch_size
 
-job2vec = Job2vec(30)
+job2vec = Job2vec(100)
 optimizer = Adam(learning_rate = 0.01)
 job2vec.compile(optimizer = optimizer,
                 loss = loss)
@@ -114,41 +111,6 @@ transformer = Normalizer()
 vectors = transformer.fit_transform(vectors)
 vectors.shape
 
-
-### Define useful functions to evaluate model
-def dot_product(vec1, vec2):
-    return np.sum((vec1*vec2))
-
-def cosine_similarity(vec1, vec2):
-    return dot_product(vec1, vec2)/np.sqrt(dot_product(vec1, vec1)*dot_product(vec2, vec2))
-
-def find_closest(word_index, vectors, number_closest):
-    list1=[]
-    query_vector = vectors[word_index]
-    for index, vector in enumerate(vectors):
-        if not np.array_equal(vector, query_vector):
-            dist = cosine_similarity(vector, query_vector)
-            list1.append([dist,index])
-    return np.asarray(sorted(list1,reverse=True)[:number_closest])
-
-def compare(index_word1,index_word2,index_word3,vectors,number_closest):
-    list1=[]
-    query_vector = vectors[index_word1]-vectors[index_word2]+vectors[index_word3]
-    normalizer = Normalizer()
-    query_vector =  normalizer.fit_transform([query_vector], 'l2')
-    query_vector= query_vector[0]
-    for index, vector in enumerate(vectors):
-        if not np.array_equal(vector, query_vector):
-            dist = cosine_similarity(vector, query_vector)
-            list1.append([dist,index])
-    return np.asarray(sorted(list1,reverse=True)[:number_closest])
-
-def print_closest(word, number=10):
-    index_closest_words = find_closest(word2idx[word], vectors, number)
-    for index_word in index_closest_words :
-        print(idx2word[index_word[1]]," -- ",index_word[0])
-        
-        
 ### Reste à definir les vecteurs des codes ROME 
 def get_job_vec(job_description):
     word_list = tokenizer.tokenize(job_description)
@@ -156,8 +118,15 @@ def get_job_vec(job_description):
     filtered_words = [word for word in word_list if word not in stop_words]
     job = np.zeros(vectors.shape[1])
     for word in filtered_words:
-        job = job + vectors[word2idx[word]]
+        try : job = job + vectors[word2idx[word]]
+        except: continue
     return job/len(filtered_words)
     
+job_vectors = new_df['text'].apply(func = get_job_vec)
+
 job1 = new_df['text'].iloc[0]
 job2 = new_df['text'].iloc[1]
+
+index_closest_words = find_closest(1, job_vectors, 10)
+
+cosine_similarity(get_job_vec(job1),get_job_vec(job2))
