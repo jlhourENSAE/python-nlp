@@ -89,19 +89,19 @@ print('Shape of X :', X.shape)
 print('Shape of Y :', y.shape)
 
 batch_size = 64
-job2vec = Job2vec(300)
+job2vec = Job2vec(30)
 
 # first run
 optimizer = Adam(learning_rate = 0.01)
 job2vec.compile(optimizer = optimizer,
                 loss = loss)
-training_history = job2vec.fit(X, y, epochs = 20, batch_size = 64)
+training_history = job2vec.fit(X, y, epochs = 50, batch_size = 64)
 
 # second run
 optimizer = Adam(learning_rate = 0.001)
 job2vec.compile(optimizer = optimizer,
                 loss = loss)
-training_history = job2vec.fit(X,y, epochs = 20, batch_size = 64)
+training_history = job2vec.fit(X,y, epochs = 50, batch_size = 64)
 
 ### 4. Post-processing
 vectors = job2vec.W1.numpy()
@@ -126,7 +126,7 @@ job_index = 0
 job1 = new_df['text'].iloc[job_index]
 print(job1)
 
-index_closest_words = find_closest(job_index, job_vectors, 10)
+index_closest_words = find_closest(job_index, job_vectors,10)
 
 # Export vectors
 job_vectors_df = job_vectors.apply(pd.Series)
@@ -134,5 +134,5 @@ for v in job_vectors_df:
     title = 'job2vec_d' + str(v+1)
     new_df[title] = job_vectors_df[v]
 
-export_df = new_df.drop(['text','job2vec', 'job2vec_d0'], axis=1)
-export_df.to_csv('job2vec_300.csv')
+export_df = new_df.drop(['text'], axis=1)
+export_df.to_csv('job2vec_30.csv')
